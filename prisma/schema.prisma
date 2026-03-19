@@ -1,0 +1,107 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  sessions      Session[]
+  accounts      Account[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id              String              @id @default(cuid())
+  userId          String
+  title           String
+  clientName      String
+  status          SessionStatus       @default(SCHEDULED)
+  meetingUrl      String?
+  recallBotId     String?
+  assemblySessionId String?
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  user            User                @relation(fields: [userId], references: [id])
+  transcriptLines TranscriptLine[]
+  blueprint       Blueprint?
+  actionItems     ActionItem[]
+}
+
+model TranscriptLine {
+  id        String   @id @default(cuid())
+  sessionId String
+  speaker   String
+  text      String   @db.Text
+  timestamp Float    // seconds from meeting start
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id])
+}
+
+model Blueprint {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique
+  summary         Json     // { overview, decisions, outOfScope }
+  requirements    Json     // { p0, p1, p2 }
+  userFlows       Json     // { flows: [], screens: [] }
+  techSpec        Json     // { frontend, backend, integrations, dataModel }
+  fullPrompt      String   @db.Text  // ready-to-paste AI coding prompt
+  confidence      Json     // { requirements, userFlows, techContext, dataModel }
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  session         Session  @relation(fields: [sessionId], references: [id])
+}
+
+model ActionItem {
+  id        String   @id @default(cuid())
+  sessionId String
+  text      String
+  owner     String?
+  priority  Priority @default(MEDIUM)
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id])
+}
+
+enum SessionStatus {
+  SCHEDULED
+  LIVE
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
