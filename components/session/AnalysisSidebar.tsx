@@ -33,7 +33,7 @@ export default function AnalysisSidebar({
 
   // Auto-analyze every 2 minutes
   useEffect(() => {
-    const interval = setInterval(triggerAnalysis, 2 * 60 * 1000)
+    const interval = setInterval(triggerAnalysis, 30000) // Poll every 30s to conserve API Quota
     return () => clearInterval(interval)
   }, [sessionId])
 
