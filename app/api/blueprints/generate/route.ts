@@ -5,20 +5,51 @@ import { generateFullBlueprint } from "@/lib/ai";
 export async function POST(req: Request) {
   const { sessionId } = await req.json();
 
+  const currentSession = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: { client: true }
+  });
+
+  if (!currentSession) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  // Get lines for current meeting
   const lines = await prisma.transcriptLine.findMany({
     where: { sessionId },
     orderBy: { timestamp: "asc" },
   });
 
-  const fullTranscript = lines
-    .map((l: any) => `[${formatTime(l.timestamp)}] ${l.speaker}: ${l.text}`)
-    .join("\n");
+  const fullTranscript = lines.length > 0
+    ? lines.map((l: any) => `[${formatTime(l.timestamp)}] ${l.speaker}: ${l.text}`).join("\n")
+    : "No spoken transcript recorded. Meeting notes / summary discussion.";
+
+  // Fetch previous meetings history for this client
+  let clientHistoryContext = "";
+  if (currentSession.clientId) {
+    const previousSessions = await prisma.session.findMany({
+      where: {
+        clientId: currentSession.clientId,
+        id: { not: sessionId },
+        status: "COMPLETE",
+      },
+      include: { blueprint: true },
+      orderBy: { meetingNumber: "asc" },
+    });
+
+    if (previousSessions.length > 0) {
+      clientHistoryContext = previousSessions
+        .map((s) => `Meeting #${s.meetingNumber} (${s.title}):\nSummary: ${JSON.stringify(s.blueprint?.summary || {})}\nRequirements: ${JSON.stringify(s.blueprint?.requirements || {})}`)
+        .join("\n\n");
+    }
+  }
 
   const partial = await prisma.blueprint.findUnique({ where: { sessionId } });
 
   const { blueprint, fullPrompt } = await generateFullBlueprint(
     fullTranscript,
-    partial || {}
+    partial || {},
+    clientHistoryContext
   );
 
   const updated = await prisma.blueprint.upsert({
@@ -41,6 +72,19 @@ export async function POST(req: Request) {
       fullPrompt 
     },
   });
+
+  // Also update action items if any
+  if (blueprint.actionItems && Array.isArray(blueprint.actionItems) && blueprint.actionItems.length > 0) {
+    await prisma.actionItem.deleteMany({ where: { sessionId } });
+    await prisma.actionItem.createMany({
+      data: blueprint.actionItems.map((item: any) => ({
+        sessionId,
+        text: item.text || item.title || "Action item",
+        owner: item.owner || null,
+        priority: item.priority === "HIGH" ? "HIGH" : item.priority === "LOW" ? "LOW" : "MEDIUM",
+      }))
+    });
+  }
 
   await prisma.session.update({
     where: { id: sessionId },

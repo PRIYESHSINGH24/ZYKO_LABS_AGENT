@@ -1,18 +1,12 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { createClient } from "@supabase/supabase-js"
 import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-
-const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL 
-  ? createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "anon"
-    )
-  : null;
+import LiveSpeechRecorder from "./LiveSpeechRecorder"
+import MeetingBotControl from "./MeetingBotControl"
 
 export default function LiveTranscript({ sessionId, initialLines }: { sessionId: string, initialLines: any[] }) {
   const [lines, setLines] = useState<any[]>(initialLines)
@@ -25,29 +19,22 @@ export default function LiveTranscript({ sessionId, initialLines }: { sessionId:
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [lines])
 
+  // Periodic poll to ensure lines synced without needing paid websockets
   useEffect(() => {
-    if (!supabase) return;
-
-    const channel = supabase
-      .channel("transcript_changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "TranscriptLine",
-          filter: `sessionId=eq.${sessionId}`,
-        },
-        (payload) => {
-          setLines((prev) => [...prev, payload.new])
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.transcriptLines && data.transcriptLines.length !== lines.length) {
+            setLines(data.transcriptLines)
+          }
         }
-      )
-      .subscribe()
+      } catch (e) {}
+    }, 4000)
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [sessionId])
+    return () => clearInterval(interval)
+  }, [sessionId, lines.length])
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, "0")
@@ -56,9 +43,13 @@ export default function LiveTranscript({ sessionId, initialLines }: { sessionId:
   }
 
   const getSpeakerColor = (speaker: string) => {
-    const colors = ["text-blue-600", "text-green-600", "text-purple-600", "text-orange-600", "text-pink-600"]
-    const index = speaker.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    const colors = ["text-blue-600", "text-emerald-600", "text-purple-600", "text-amber-600", "text-pink-600"]
+    const index = (speaker || "Default").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return colors[index % colors.length]
+  }
+
+  const handleLineAdded = (newLine: any) => {
+    setLines((prev) => [...prev, newLine])
   }
 
   const submitManualLine = async (e: React.FormEvent) => {
@@ -66,60 +57,77 @@ export default function LiveTranscript({ sessionId, initialLines }: { sessionId:
     if (!manualText.trim() || submitting) return;
     setSubmitting(true);
     
-    await fetch(`/api/sessions/${sessionId}/transcript`, {
+    const textToSend = manualText.trim();
+    setManualText("");
+
+    const res = await fetch(`/api/sessions/${sessionId}/transcript`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
-        speaker: "Manual Upload", 
-        text: manualText, 
-        timestamp: lines.length > 0 ? lines[lines.length - 1].timestamp + 5 : 0 
+        speaker: "Notes / Manual", 
+        text: textToSend, 
+        timestamp: lines.length > 0 ? lines[lines.length - 1].timestamp + 3 : 0 
       })
     });
-    setManualText("");
+
+    if (res.ok) {
+      const newLine = await res.json();
+      setLines((prev) => [...prev, newLine]);
+    }
     setSubmitting(false);
   };
 
   return (
-    <Card className="flex flex-col h-full border-r-0 rounded-r-none rounded-l-md overflow-hidden">
-      <CardHeader className="bg-gray-50 border-b pb-4 shrink-0">
-        <CardTitle className="text-lg flex justify-between items-center">
-          <span>Live Transcript</span>
-          <span className="text-sm font-normal items-center flex text-green-600">
-            <span className="h-2 w-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
-            Active
+    <Card className="flex flex-col h-full border border-gray-200 rounded-lg overflow-hidden shadow-xs">
+      <CardHeader className="bg-gray-50/70 border-b p-3 shrink-0">
+        <div className="flex justify-between items-center mb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <span>Meeting Transcript</span>
+            <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              Live & Free
+            </span>
+          </CardTitle>
+          <span className="text-xs text-gray-500 font-mono">
+            {lines.length} {lines.length === 1 ? "line" : "lines"}
           </span>
-        </CardTitle>
+        </div>
+        
+        {/* In-Browser Free Live Speech Recognition & Audio Recorder */}
+        <LiveSpeechRecorder sessionId={sessionId} onTranscriptAdded={handleLineAdded} />
       </CardHeader>
       
-      <ScrollArea className="flex-1 p-6">
-        <div className="space-y-6 pb-4">
+      <ScrollArea className="flex-1 p-4 bg-white">
+        <div className="space-y-4 pb-4">
           {lines.length === 0 && (
-            <p className="text-gray-400 text-sm text-center py-10 italic">
-              No transcript lines yet. The bot will automatically stream them here, or you can paste notes manually below!
-            </p>
+            <div className="text-gray-400 text-sm text-center py-12 space-y-2">
+              <p className="font-medium">No spoken transcript recorded yet.</p>
+              <p className="text-xs text-gray-400 max-w-sm mx-auto">
+                Click <strong>"Start Free Live Listening"</strong> above to capture microphone or meeting speech in real-time, or paste meeting notes below!
+              </p>
+            </div>
           )}
           {lines.map((line, i) => (
-            <div key={line.id || i} className="flex flex-col group cursor-pointer hover:bg-gray-100 p-2 -mx-2 rounded transition-colors">
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`font-semibold text-sm ${getSpeakerColor(line.speaker)}`}>
+            <div key={line.id || i} className="flex flex-col p-2.5 rounded-lg bg-gray-50/80 hover:bg-gray-100 transition-colors border border-gray-100">
+              <div className="flex items-center justify-between mb-1">
+                <span className={`font-semibold text-xs tracking-tight ${getSpeakerColor(line.speaker)}`}>
                   {line.speaker}
                 </span>
-                <span className="text-xs text-gray-400">
-                  {formatTime(line.timestamp)}
+                <span className="text-[11px] text-gray-400 font-mono">
+                  {formatTime(line.timestamp || 0)}
                 </span>
               </div>
-              <p className="text-gray-800 text-sm leading-relaxed">{line.text}</p>
+              <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">{line.text}</p>
             </div>
           ))}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
       
-      <div className="p-4 border-t bg-gray-50 shrink-0">
+      <div className="p-3 border-t bg-gray-50 shrink-0">
         <form onSubmit={submitManualLine} className="flex gap-2">
           <Textarea 
-            placeholder="Paste manual transcript line or context here..."
-            className="min-h-[60px] resize-none"
+            placeholder="Type or paste quick note (Press Enter to send)..."
+            className="min-h-[50px] max-h-[100px] resize-none text-xs"
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
             onKeyDown={(e) => {
@@ -129,7 +137,7 @@ export default function LiveTranscript({ sessionId, initialLines }: { sessionId:
               }
             }}
           />
-          <Button type="submit" disabled={!manualText.trim() || submitting} className="h-full min-h-[60px]">
+          <Button type="submit" disabled={!manualText.trim() || submitting} className="h-auto px-4 bg-gray-900 text-white">
             Send
           </Button>
         </form>
