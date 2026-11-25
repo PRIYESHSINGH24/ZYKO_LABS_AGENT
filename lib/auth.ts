@@ -51,6 +51,50 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   callbacks: {
+    // JWT sessions outlive the database rows they point at: after a reset or a
+    // restore the cookie stays valid while the user is gone, so session.user.id
+    // no longer matches any User row and every insert fails with P2003
+    // (foreign key violation). Re-attach the token to a real row on each read.
+    jwt: async ({ token, user }) => {
+      if (user?.id) token.sub = user.id
+
+      if (!token.sub) return token
+
+      const email = token.email
+      const existing = email
+        ? await prisma.user.findUnique({ where: { email }, select: { id: true } })
+        : await prisma.user.findUnique({ where: { id: token.sub }, select: { id: true } })
+
+      if (existing) {
+        token.sub = existing.id
+        return token
+      }
+
+      if (!email) {
+        // Cannot recreate an account without an email; drop the stale identity
+        // so the request is treated as signed out.
+        token.sub = undefined
+        return token
+      }
+
+      const created = await prisma.user
+        .create({
+          data: {
+            id: token.sub,
+            email,
+            name: typeof token.name === "string" ? token.name : null,
+            image: typeof token.picture === "string" ? token.picture : null,
+          },
+          select: { id: true },
+        })
+        .catch(async () =>
+          // Another request may have created the same email first.
+          prisma.user.findUnique({ where: { email }, select: { id: true } })
+        )
+
+      token.sub = created?.id
+      return token
+    },
     session: ({ session, token }) => {
       if (token && session.user) {
         (session.user as any).id = token.sub as string;

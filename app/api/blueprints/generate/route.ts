@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateFullBlueprint } from "@/lib/ai";
+import { authorizeSession } from "@/lib/api-auth";
 
 export async function POST(req: Request) {
   const { sessionId } = await req.json();
+
+  // Either the meeting bot (shared token) or the signed-in owner may generate.
+  if (!sessionId || !(await authorizeSession(req, sessionId))) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
 
   const currentSession = await prisma.session.findUnique({
     where: { id: sessionId },

@@ -16,6 +16,7 @@ function NewSessionContent() {
   const [clients, setClients] = useState<any[]>([])
   const [selectedClientId, setSelectedClientId] = useState(initialClientId)
   const [meetingTitle, setMeetingTitle] = useState("")
+  const [meetingUrl, setMeetingUrl] = useState("")
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -56,6 +57,7 @@ function NewSessionContent() {
         body: JSON.stringify({
           clientId: selectedClientId || undefined,
           title: meetingTitle || undefined,
+          meetingUrl: meetingUrl || undefined,
         }),
       })
 
@@ -120,6 +122,19 @@ function NewSessionContent() {
                 onChange={(e) => setMeetingTitle(e.target.value)}
                 required
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase text-gray-600">Google Meet Link (Optional)</label>
+              <Input
+                type="url"
+                placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                value={meetingUrl}
+                onChange={(e) => setMeetingUrl(e.target.value)}
+              />
+              <p className="text-[10px] text-gray-400 mt-1">
+                Bot isse meeting mein auto-join karke live transcribe karega
+              </p>
             </div>
 
             <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-lg text-xs text-blue-900 space-y-1">

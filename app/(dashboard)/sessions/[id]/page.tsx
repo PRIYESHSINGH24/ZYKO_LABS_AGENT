@@ -63,7 +63,7 @@ export default async function SessionPage(props: { params: Promise<{ id: string 
       {/* Main Grid: Left is Live Transcript + Free Speech Recorder; Right is Real-time AI Analysis */}
       <div className="flex-1 flex overflow-hidden p-4 gap-4 bg-gray-50/50">
         <div className="w-7/12 h-full flex flex-col">
-          <LiveTranscript sessionId={session.id} initialLines={session.transcriptLines} />
+          <LiveTranscript sessionId={session.id} initialLines={session.transcriptLines} defaultMeetingUrl={session.meetingUrl || ""} autoLaunch={!!session.meetingUrl} />
         </div>
         <div className="w-5/12 h-full flex flex-col">
           <AnalysisSidebar 

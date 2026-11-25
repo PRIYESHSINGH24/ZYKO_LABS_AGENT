@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# meeting bot chrome profile
+.bot-profile
+
+# bot failure artifacts
+/recordings*

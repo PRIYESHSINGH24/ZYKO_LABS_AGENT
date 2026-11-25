@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import LiveSpeechRecorder from "./LiveSpeechRecorder"
 import MeetingBotControl from "./MeetingBotControl"
 
-export default function LiveTranscript({ sessionId, initialLines }: { sessionId: string, initialLines: any[] }) {
+export default function LiveTranscript({ sessionId, initialLines, defaultMeetingUrl, autoLaunch }: { sessionId: string, initialLines: any[], defaultMeetingUrl?: string, autoLaunch?: boolean }) {
   const [lines, setLines] = useState<any[]>(initialLines)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -94,6 +94,7 @@ export default function LiveTranscript({ sessionId, initialLines }: { sessionId:
         
         {/* In-Browser Free Live Speech Recognition & Audio Recorder */}
         <LiveSpeechRecorder sessionId={sessionId} onTranscriptAdded={handleLineAdded} />
+        <MeetingBotControl sessionId={sessionId} defaultMeetingUrl={defaultMeetingUrl || ""} autoLaunch={!!autoLaunch} />
       </CardHeader>
       
       <ScrollArea className="flex-1 p-4 bg-white">
